@@ -1,3 +1,6 @@
+import rospy
+import numpy as np
+
 class MotionModel:
 
     def __init__(self):
@@ -6,10 +9,14 @@ class MotionModel:
         # TODO
         # Do any precomputation for the motion
         # model here.
-
-        pass
-
+        self.deterministic = rospy.get_param("~deterministic")
+        
         ####################################
+
+    def transformation_matrix(self,th):
+            return np.array([[np.cos(th), -np.sin(th), 0],
+                             [np.sin(th), np.cos(th),  0]
+                             [0,            0,         1]])
 
     def evaluate(self, particles, odometry):
         """
@@ -31,8 +38,15 @@ class MotionModel:
         """
         
         ####################################
-        # TODO
 
-        raise NotImplementedError
+        # raise NotImplementedError
+        shape = particles.shape()
+        new_particles = np.zeros(shape)
+
+        for i in range(shape[0]):
+            p = particles[i]
+            new_p = p + self.transformation_matrix(p[2])@odometry
+            new_particles[i] = new_p
+        return new_particles
 
         ####################################
