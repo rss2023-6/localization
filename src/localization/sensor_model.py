@@ -21,11 +21,13 @@ class SensorModel:
         ####################################
         # TODO
         # Adjust these parameters
-        self.alpha_hit = 0
-        self.alpha_short = 0
-        self.alpha_max = 0
-        self.alpha_rand = 0
-        self.sigma_hit = 0
+        self.alpha_hit = 0.74
+        self.alpha_short = 0.07
+        self.alpha_max = 0.07
+        self.alpha_rand = 0.12
+        self.sigma_hit = 8.0
+
+        self.z_max_px = 200
 
         # Your sensor table will be a `table_width` x `table_width` np array:
         self.table_width = 201
@@ -72,6 +74,24 @@ class SensorModel:
             No return type. Directly modify `self.sensor_model_table`.
         """
         raise NotImplementedError
+    
+    def p_hit(self, z_k, d):
+        mult = (np.sqrt(2.0 * np.pi * (self.sigma_hit**2)))
+        exp = np.exp((-1.0 * (z_k - d)**2)/(2.0 * (self.sigma_hit**2)))
+        return mult*exp if 0 <= z_k <= self.z_max_px else 0
+
+    def p_short(self, z_k, d):
+        return (2.0/d) * (1 - (z_k/d)) if 0 <= z_k <= d and d != 0 else 0
+
+    def p_max(self, z_k):
+        return 1 if self.z_max_px == z_k else 0
+
+    def p_rand(self, z_k):
+        return 1/self.z_max_px if 0 <= z_k <= self.z_max_px else 0
+
+    def p_z(self, z_k):
+        return self.alpa_hit * self.p_hit(z_k) + self.alpha_short * self.p_short(z_k) + self.alpha_max * self.p_max(z_k) + self.alpha_rand * self.p_rand(z_k)
+
 
     def evaluate(self, particles, observation):
         """
