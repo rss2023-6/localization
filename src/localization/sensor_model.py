@@ -17,6 +17,7 @@ class SensorModel:
         self.num_beams_per_particle = rospy.get_param("~num_beams_per_particle")
         self.scan_theta_discretization = rospy.get_param("~scan_theta_discretization")
         self.scan_field_of_view = rospy.get_param("~scan_field_of_view")
+        self.lidar_scale_to_map_scale = rospy.get_param("~lidar_scale_to_map_scale")
 
         ####################################
         # TODO
@@ -92,6 +93,11 @@ class SensorModel:
     def p_z(self, z_k):
         return self.alpa_hit * self.p_hit(z_k) + self.alpha_short * self.p_short(z_k) + self.alpha_max * self.p_max(z_k) + self.alpha_rand * self.p_rand(z_k)
 
+    def px_2_m(self, px):
+        return px*self.map_resolution*self.lidar_scale_to_map_scale
+
+    def m_2_px(self, m):
+        return m/(self.map_resolution*self.lidar_scale_to_map_scale)
 
     def evaluate(self, particles, observation):
         """
@@ -126,6 +132,26 @@ class SensorModel:
         # This produces a matrix of size N x num_beams_per_particle 
 
         scans = self.scan_sim.scan(particles)
+        # Assume observation is already downsampled
+        
+        # First convert ray trace and lidar units to px 
+        scans = self.m_2_px(scans)
+        obs = self.m_2_px(observation)
+
+        # Clip Values Between 0 and z_max and rounds them
+        np.clip(scans,0,self.z_max_px)
+        np.clip(obs,0,self.z_max_px)
+        np.rint(scans)
+        np.rint(obs)
+
+        # Compute probabilities
+        probs = np.ones(scans.shape[0],np.double)
+        
+        for i in range(scans.shape[0]):
+            for j in range(scans.shape[1]):
+                probs[i] *= self.sensor_model_table[scans[j]][obs[j]]
+        
+        return probs
 
         ####################################
 
