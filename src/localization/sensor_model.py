@@ -1,8 +1,7 @@
 import numpy as np
-from localization.scan_simulator_2d import PyScanSimulator2D
+#from localization.scan_simulator_2d import PyScanSimulator2D
 # Try to change to just `from scan_simulator_2d import PyScanSimulator2D` 
 # if any error re: scan_simulator_2d occurs
-
 import rospy
 import tf
 from nav_msgs.msg import OccupancyGrid
@@ -44,7 +43,7 @@ class SensorModel:
                 self.scan_field_of_view,
                 0, # This is not the simulator, don't add noise
                 0.01, # This is used as an epsilon
-                self.scan_theta_discretization) 
+                self.scan_theta_discretization)
 
         # Subscribe to the map
         self.map = None
@@ -74,7 +73,18 @@ class SensorModel:
         returns:
             No return type. Directly modify `self.sensor_model_table`.
         """
-        raise NotImplementedError
+        table = np.empty((self.table_width, self.table_width))
+        discretized_d = np.linspace(0, self.z_max_px, num=self.table_width)
+        for i in range(self.table_width):
+            for j in range(self.table_width):
+                table[i][j] = self.p_hit(discretized_d[j], discretized_d[i])
+            table[i] = table[i]/sum(table[i])
+            for j in range(self.table_width):
+                table[i][j] = self.p_z(discretized_d[j], discretized_d[i], table[i][j])
+        table/table.sum(axis=0)
+
+        
+
     
     def p_hit(self, z_k, d):
         mult = (np.sqrt(2.0 * np.pi * (self.sigma_hit**2)))
@@ -90,8 +100,8 @@ class SensorModel:
     def p_rand(self, z_k):
         return 1/self.z_max_px if 0 <= z_k <= self.z_max_px else 0
 
-    def p_z(self, z_k):
-        return self.alpa_hit * self.p_hit(z_k) + self.alpha_short * self.p_short(z_k) + self.alpha_max * self.p_max(z_k) + self.alpha_rand * self.p_rand(z_k)
+    def p_z(self, z_k, d, alpha_hit):
+        return self.alpha_hit * alpha_hit + self.alpha_short * self.p_short(z_k, d) + self.alpha_max * self.p_max(z_k) + self.alpha_rand * self.p_rand(z_k)
 
     def px_2_m(self, px):
         return px*self.map_resolution*self.lidar_scale_to_map_scale
