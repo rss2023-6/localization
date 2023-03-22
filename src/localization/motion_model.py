@@ -18,6 +18,13 @@ class MotionModel:
                              [np.sin(th), np.cos(th),  0]
                              [0,            0,         1]])
 
+    def noise(self):
+         if not self.deterministic: #false so add noise
+            return np.random.randn(3,1)/100.0
+         else:
+            return np.array([0,0,0])
+              
+
     def evaluate(self, particles, odometry):
         """
         Update the particles to reflect probable
@@ -45,7 +52,7 @@ class MotionModel:
 
         for i in range(shape[0]):
             p = particles[i]
-            new_p = p + self.transformation_matrix(p[2])@odometry
+            new_p = p + np.matmul(self.transformation_matrix(p[2]),odometry) + self.noise()
             new_particles[i] = new_p
         return new_particles
 
