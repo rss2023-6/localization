@@ -15,8 +15,8 @@ class MotionModel:
 
     def transformation_matrix(self,th):
             return np.array([[np.cos(th), -np.sin(th), 0],
-                             [np.sin(th), np.cos(th),  0]
-                             [0,            0,         1]])
+                             [np.sin(th), np.cos(th), 0],
+                             [0, 0, 1]])
 
     def noise(self):
          if not self.deterministic: #false so add noise
@@ -47,13 +47,13 @@ class MotionModel:
         ####################################
 
         # raise NotImplementedError
-        shape = particles.shape()
+        shape = (len(particles), len(particles[0]))
         new_particles = np.zeros(shape)
 
         for i in range(shape[0]):
-            p = particles[i]
-            new_p = p + np.matmul(self.transformation_matrix(p[2]),odometry) + self.noise()
+            p = particles[i] #list
+            new_p = p + np.matmul(self.transformation_matrix(p[2]),np.array(odometry)) + self.noise()
             new_particles[i] = new_p
-        return new_particles
+        return new_particles.tolist()
 
         ####################################
