@@ -66,14 +66,10 @@ class ParticleFilter:
         # and the particle_filter_frame.
         self.N = 200
         self.points = None
+        self.down_sampled_points = None
+        self.probs = None
 
-    def lidar_callback(self, msg):
-        angle_min = msg.angle_min
-        angle_max = msg.angle_max
-        angle_increment = msg.angle_increment
-        time_increment = msg.time_increment
-        ranges = msg.ranges
-        range_max = msg.range_max
+    def setDownSamplePoints(self, ranges):
         N = len(ranges)
         down_sample_scale = N // self.N
         down_sampled_ranges = [-1 * self.N]
@@ -87,7 +83,25 @@ class ParticleFilter:
         if(down_sampled_ranges[-1] == -1):
             down_sampled_ranges[-1] = avg
 
-        self.sensor_model(self.points, down_sampled_ranges)
+        self.down_sampled_points = down_sampled_ranges
+
+    def lidar_callback(self, msg):
+        angle_min = msg.angle_min
+        angle_max = msg.angle_max
+        angle_increment = msg.angle_increment
+        time_increment = msg.time_increment
+        ranges = msg.ranges
+        range_max = msg.range_max
+        #make sure down sampled points are set
+        self.setDownSamplePoints()
+        
+        #update probability
+        self.probs = self.sensor_model(self.points, self.down_sampled_ranges)
+
+        #resample points
+        np.random.choice(self.down_sampled_points, self.N, self.probs)
+
+        #TODO: not sure what I'm supposed to w the above, I think I'm supposed to change down_sampled_points or smthing
     
     def odom_callback(self, msg):
         header = msg.header
@@ -108,7 +122,13 @@ class ParticleFilter:
         # angular = msg.twist.agular
         odom = [x, y, theta]
 
-        self.motion_model(self.points, odom)
+        #make sure down sampled points are set
+        self.setDownSamplePoints()
+
+        #update points
+        self.down_sampled_points = self.motion_model(self.down_sampled_points, odom)
+
+        #publish averaged position
    
     def pose_initialization_callback(self, msg):
         x = msg.pose.position.x
