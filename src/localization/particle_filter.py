@@ -7,7 +7,7 @@ from motion_model import MotionModel
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
-
+from tf.transformations import euler_from_quaternion
 
 class ParticleFilter:
 
@@ -28,10 +28,10 @@ class ParticleFilter:
         scan_topic = rospy.get_param("~scan_topic", "/scan")
         odom_topic = rospy.get_param("~odom_topic", "/odom")
         self.laser_sub = rospy.Subscriber(scan_topic, LaserScan,
-                                          YOUR_LIDAR_CALLBACK, # TODO: Fill this in
+                                          self.lidar_callback, # TODO: Fill this in
                                           queue_size=1)
         self.odom_sub  = rospy.Subscriber(odom_topic, Odometry,
-                                          YOUR_ODOM_CALLBACK, # TODO: Fill this in
+                                          self.odom_callback, # TODO: Fill this in
                                           queue_size=1)
 
         #  *Important Note #2:* You must respond to pose
@@ -40,7 +40,7 @@ class ParticleFilter:
         #     "Pose Estimate" feature in RViz, which publishes to
         #     /initialpose.
         self.pose_sub  = rospy.Subscriber("/initialpose", PoseWithCovarianceStamped,
-                                          YOUR_POSE_INITIALIZATION_CALLBACK, # TODO: Fill this in
+                                          self.pose_initialization_callback, # TODO: Fill this in
                                           queue_size=1)
 
         #  *Important Note #3:* You must publish your pose estimate to
@@ -64,7 +64,84 @@ class ParticleFilter:
         #
         # Publish a transformation frame between the map
         # and the particle_filter_frame.
+        self.N = 200
+        self.points = None
+        self.down_sampled_points = None
+        self.probs = None
 
+    def setDownSamplePoints(self, ranges):
+        N = len(ranges)
+        down_sample_scale = N // self.N
+        down_sampled_ranges = [-1 * self.N]
+
+        avg = 0
+        for i in range(N):
+            avg += 1.0 * ranges[i] / down_sample_scale
+            if(i % down_sample_scale == down_sample_scale - 1):
+                down_sampled_ranges[i] = avg
+                avg = 0
+        if(down_sampled_ranges[-1] == -1):
+            down_sampled_ranges[-1] = avg
+
+        self.down_sampled_points = down_sampled_ranges
+
+    def lidar_callback(self, msg):
+        angle_min = msg.angle_min
+        angle_max = msg.angle_max
+        angle_increment = msg.angle_increment
+        time_increment = msg.time_increment
+        ranges = msg.ranges
+        range_max = msg.range_max
+        #make sure down sampled points are set
+        self.setDownSamplePoints()
+        
+        #update probability
+        self.probs = self.sensor_model(self.points, self.down_sampled_ranges)
+
+        #resample points
+        np.random.choice(self.down_sampled_points, self.N, self.probs)
+
+        #TODO: not sure what I'm supposed to w the above, I think I'm supposed to change down_sampled_points or smthing
+    
+    def odom_callback(self, msg):
+        header = msg.header
+        child_frame_id = msg.child_frame_id
+
+        pose = msg.pose.pose
+        x = pose.position.x
+        y = pose.position.y
+        z = pose.position.z
+        
+        q_x = pose.orientation.x
+        q_y = pose.orientation.y
+        q_z = pose.orientation.z
+        q_w = pose.orientation.w
+
+        (roll, pitch, theta) = euler_from_quaternion(q_x, q_y, q_z, q_w)
+        # linear = msg.twist.linear
+        # angular = msg.twist.agular
+        odom = [x, y, theta]
+
+        #make sure down sampled points are set
+        self.setDownSamplePoints()
+
+        #update points
+        self.down_sampled_points = self.motion_model(self.down_sampled_points, odom)
+
+        #publish averaged position
+   
+    def pose_initialization_callback(self, msg):
+        x = msg.pose.position.x
+        y = msg.pose.position.y
+        z = msg.pose.position.z
+
+        q_x = msg.pose.orientation.x
+        q_y = msg.pose.orientation.y
+        q_z = msg.pose.orientation.z
+        q_w = msg.pose.orientation.w
+    
+        (roll, pitch, theta) = euler_from_quaternion(q_x, q_y, q_z, q_w)
+        self.points = [[x, y, theta] * self.N]
 
 if __name__ == "__main__":
     rospy.init_node("particle_filter")
