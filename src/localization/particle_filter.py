@@ -4,6 +4,7 @@ import rospy
 from sensor_model import SensorModel
 from motion_model import MotionModel
 
+import numpy as np
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
@@ -92,6 +93,7 @@ class ParticleFilter:
         time_increment = msg.time_increment
         ranges = msg.ranges
         range_max = msg.range_max
+
         #make sure down sampled points are set
         self.setDownSamplePoints()
         
@@ -99,9 +101,7 @@ class ParticleFilter:
         self.probs = self.sensor_model(self.points, self.down_sampled_ranges)
 
         #resample points
-        np.random.choice(self.down_sampled_points, self.N, self.probs)
-
-        #TODO: not sure what I'm supposed to w the above, I think I'm supposed to change down_sampled_points or smthing
+        self.down_sampled_points = np.random.choice(self.down_sampled_points, self.N, self.probs)
     
     def odom_callback(self, msg):
         header = msg.header
@@ -117,7 +117,7 @@ class ParticleFilter:
         q_z = pose.orientation.z
         q_w = pose.orientation.w
 
-        (roll, pitch, theta) = euler_from_quaternion(q_x, q_y, q_z, q_w)
+        roh, pitch, theta = euler_from_quaternion(q_x, q_y, q_z, q_w)
         # linear = msg.twist.linear
         # angular = msg.twist.agular
         odom = [x, y, theta]
@@ -126,10 +126,27 @@ class ParticleFilter:
         self.setDownSamplePoints()
 
         #update points
-        self.down_sampled_points = self.motion_model(self.down_sampled_points, odom)
-
+        self.down_sampled_points = np.array(self.motion_model(self.down_sampled_points, odom))
+        
         #publish averaged position
-   
+        #NOTE: If this ever throughs an array is numpy error, there might've been concurrecy issues between probability and odom models
+        #IMPORTANT TODO: FIX the average position thing to work with angles, right now I just straight averaged, which doesn't work for sphereical coordinates, 
+        # there's a seciton in the notebook about this
+        average = np.average(self.down_sampled_points, axis=0)
+        self.odom_pub.pub(self.point_to_message(average[0], average[1], average[2]))
+
+    def point_to_message(x, y, theta):
+        msg = PoseWithCovarianceStamped()
+        msg.pose.pose.position.x = x
+        msg.pose.pose.position.y = y
+
+        o = quaternion_from_euler(0,0,theta)
+        msg.pose.pose.orientation.x = o[0]
+        msg.pose.pose.orientation.y = o[1]
+        msg.pose.pose.orientation.z = o[2]
+        msg.pose.pose.orientation.w = o[3]
+        return msg
+
     def pose_initialization_callback(self, msg):
         x = msg.pose.position.x
         y = msg.pose.position.y
@@ -140,8 +157,18 @@ class ParticleFilter:
         q_z = msg.pose.orientation.z
         q_w = msg.pose.orientation.w
     
-        (roll, pitch, theta) = euler_from_quaternion(q_x, q_y, q_z, q_w)
+        roh, pitch, theta = euler_from_quaternion(q_x, q_y, q_z, q_w)
         self.points = [[x, y, theta] * self.N]
+
+        #publishes initial pose to odometry data -> goes to odom model I think
+        msg = PoseWithCovarianceStamped()
+        msg.pose.pose.position.x = x
+        msg.pose.pose.position.y = y
+        msg.pose.pose.orientation.x = q_x
+        msg.pose.pose.orientation.y = q_y
+        msg.pose.pose.orientation.z = q_z
+        msg.pose.pose.orientation.w = q_w
+        self.odom_pub.publish(msg)
 
 if __name__ == "__main__":
     rospy.init_node("particle_filter")
