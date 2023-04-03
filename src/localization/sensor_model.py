@@ -1,11 +1,13 @@
 import numpy as np
-#from localization.scan_simulator_2d import PyScanSimulator2D
+from localization.scan_simulator_2d import PyScanSimulator2D
 # Try to change to just `from scan_simulator_2d import PyScanSimulator2D` 
 # if any error re: scan_simulator_2d occurs
 import rospy
 import tf
 from nav_msgs.msg import OccupancyGrid
 from tf.transformations import quaternion_from_euler
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 class SensorModel:
 
@@ -31,6 +33,8 @@ class SensorModel:
 
         # Your sensor table will be a `table_width` x `table_width` np array:
         self.table_width = 201
+
+        self.map_resolution = 1
         ####################################
 
         # Precompute the sensor model table
@@ -78,16 +82,36 @@ class SensorModel:
         for i in range(self.table_width):
             for j in range(self.table_width):
                 table[i][j] = self.p_hit(discretized_d[j], discretized_d[i])
-            table[i] = table[i]/sum(table[i])
+            table[i] = table[i]/sum(table[i]) #normalize p_hit
             for j in range(self.table_width):
                 table[i][j] = self.p_z(discretized_d[j], discretized_d[i], table[i][j])
-        table/table.sum(axis=0)
+        table = table/table.sum(axis=0) #normalize whole table
+        self.sensor_model_table = table #directly modify self.sensor_model_table
 
+        #self.visualize_model()
+
+
+    def visualize_model(self):
+        x = np.linspace(0, self.table_width, self.table_width)
+        y = np.linspace(0, self.table_width, self.table_width)
+        X,Y = np.meshgrid(x,y)
+        
+        fig = plt.figure()
+
+        ax = fig.add_subplot(111, projection='3d')
+        surf = ax.plot_surface(X,Y,self.sensor_model_table.T)
+        ax.invert_xaxis()
+
+        ax.set_xlabel('X Label')
+        ax.set_ylabel('Y Label')
+        ax.set_zlabel('Z Label')
+
+        plt.show()
         
 
     
     def p_hit(self, z_k, d):
-        mult = (np.sqrt(2.0 * np.pi * (self.sigma_hit**2)))
+        mult = 1/(np.sqrt(2.0 * np.pi * (self.sigma_hit**2)))
         exp = np.exp((-1.0 * (z_k - d)**2)/(2.0 * (self.sigma_hit**2)))
         return mult*exp if 0 <= z_k <= self.z_max_px else 0
 
@@ -100,8 +124,8 @@ class SensorModel:
     def p_rand(self, z_k):
         return 1/self.z_max_px if 0 <= z_k <= self.z_max_px else 0
 
-    def p_z(self, z_k, d, alpha_hit):
-        return self.alpha_hit * alpha_hit + self.alpha_short * self.p_short(z_k, d) + self.alpha_max * self.p_max(z_k) + self.alpha_rand * self.p_rand(z_k)
+    def p_z(self, z_k, d, p_hit_z):
+        return self.alpha_hit * p_hit_z + self.alpha_short * self.p_short(z_k, d) + self.alpha_max * self.p_max(z_k) + self.alpha_rand * self.p_rand(z_k)
 
     def px_2_m(self, px):
         return px*self.map_resolution*self.lidar_scale_to_map_scale
@@ -149,17 +173,17 @@ class SensorModel:
         obs = self.m_2_px(observation)
 
         # Clip Values Between 0 and z_max and rounds them
-        np.clip(scans,0,self.z_max_px)
-        np.clip(obs,0,self.z_max_px)
-        np.rint(scans)
-        np.rint(obs)
+        scans = np.clip(scans,0,self.z_max_px)
+        obs = np.clip(obs,0,self.z_max_px)
+        clean_scans = np.rint(scans)
+        clean_obs = np.rint(obs)
 
         # Compute probabilities
-        probs = np.ones(scans.shape[0],np.double)
+        probs = np.ones(clean_scans.shape[0],np.double)
         
-        for i in range(scans.shape[0]):
-            for j in range(scans.shape[1]):
-                probs[i] *= self.sensor_model_table[scans[j]][obs[j]]
+        for i in range(clean_scans.shape[0]): #rows
+            for j in range(clean_scans.shape[1]): #columns
+                probs[i] *= self.sensor_model_table[clean_scans[j]][clean_obs[j]]
         
         return probs
 
