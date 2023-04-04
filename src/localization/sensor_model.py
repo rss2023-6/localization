@@ -1,3 +1,5 @@
+from __future__ import division
+import math
 import numpy as np
 from localization.scan_simulator_2d import PyScanSimulator2D
 # Try to change to just `from scan_simulator_2d import PyScanSimulator2D` 
@@ -81,11 +83,12 @@ class SensorModel:
         discretized_d = np.linspace(0, self.z_max_px, num=self.table_width)
         for i in range(self.table_width):
             for j in range(self.table_width):
-                table[i][j] = self.p_hit(discretized_d[j], discretized_d[i])
-            table[i] = table[i]/sum(table[i]) #normalize p_hit
+                table[i][j] = self.p_hit(discretized_d[j], discretized_d[i]) # d = row, z_k = column
+            table[i] = table[i]/sum(table[i]) #normalise z_k range over fixed d
             for j in range(self.table_width):
                 table[i][j] = self.p_z(discretized_d[j], discretized_d[i], table[i][j])
-        table = table/table.sum(axis=0) #normalize whole table
+            table[i] = table[i]/sum(table[i]) 
+        table = np.swapaxes(table, 0, 1)
         self.sensor_model_table = table #directly modify self.sensor_model_table
 
         #self.visualize_model()
@@ -167,6 +170,8 @@ class SensorModel:
 
         scans = self.scan_sim.scan(particles)
         # Assume observation is already downsampled
+
+        observation = np.array(self.setDownSamplePoints(observation))
         
         # First convert ray trace and lidar units to px 
         scans = self.m_2_px(scans)
@@ -183,9 +188,25 @@ class SensorModel:
         
         for i in range(clean_scans.shape[0]): #rows
             for j in range(clean_scans.shape[1]): #columns
-                probs[i] *= self.sensor_model_table[clean_scans[j]][clean_obs[j]]
-        
+                probs[i] *= self.sensor_model_table[int(clean_scans[i][j])][int(clean_obs[j])]
         return probs
+    
+        
+    def setDownSamplePoints(self, ranges):
+            N = len(ranges)
+            down_sample_scale = N // self.num_beams_per_particle
+            down_sampled_ranges = [-1 for x in range(self.num_beams_per_particle)]
+
+            avg = 0
+            for i in range(N):
+                avg += 1.0 * ranges[i] / down_sample_scale
+                if(i % down_sample_scale == down_sample_scale - 1):
+                    down_sampled_ranges[int(math.floor(i/down_sample_scale))] = avg
+                    avg = 0
+            if(down_sampled_ranges[-1] == -1):
+                down_sampled_ranges[-1] = avg
+
+            return(down_sampled_ranges)
 
         ####################################
 
