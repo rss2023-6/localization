@@ -10,7 +10,6 @@ from nav_msgs.msg import OccupancyGrid
 from tf.transformations import quaternion_from_euler
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-import scipy
 from scipy import signal
 
 class SensorModel:

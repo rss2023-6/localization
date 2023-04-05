@@ -9,7 +9,6 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from tf.transformations import euler_from_quaternion
-import scipy
 from scipy import signal
 
 class ParticleFilter:
