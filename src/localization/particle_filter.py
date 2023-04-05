@@ -29,10 +29,10 @@ class ParticleFilter:
         scan_topic = rospy.get_param("~scan_topic", "/scan")
         odom_topic = rospy.get_param("~odom_topic", "/odom")
         self.laser_sub = rospy.Subscriber(scan_topic, LaserScan,
-                                          self.lidar_callback, # TODO: Fill this in
+                                          self.lidar_callback, 
                                           queue_size=1)
         self.odom_sub  = rospy.Subscriber(odom_topic, Odometry,
-                                          self.odom_callback, # TODO: Fill this in
+                                          self.odom_callback, 
                                           queue_size=1)
 
         #  *Important Note #2:* You must respond to pose
@@ -41,7 +41,7 @@ class ParticleFilter:
         #     "Pose Estimate" feature in RViz, which publishes to
         #     /initialpose.
         self.pose_sub  = rospy.Subscriber("/initialpose", PoseWithCovarianceStamped,
-                                          self.pose_initialization_callback, # TODO: Fill this in
+                                          self.pose_initialization_callback, 
                                           queue_size=1)
 
         #  *Important Note #3:* You must publish your pose estimate to
