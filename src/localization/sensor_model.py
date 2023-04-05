@@ -10,6 +10,8 @@ from nav_msgs.msg import OccupancyGrid
 from tf.transformations import quaternion_from_euler
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import scipy
+from scipy import signal
 
 class SensorModel:
 
@@ -169,7 +171,7 @@ class SensorModel:
 
         scans = self.scan_sim.scan(particles)
 
-        #observation = np.array(self.setDownSamplePoints(observation))
+        #observation = signal.decimate(obvservation, 1)
         
         # First convert ray trace and lidar units to px 
         scans = self.m_2_px(scans)
@@ -192,23 +194,6 @@ class SensorModel:
         final_result = np.power(probs, 1.0/2.2)
         
         return final_result
-    
-        
-    def setDownSamplePoints(self, ranges):
-            N = len(ranges)
-            down_sample_scale = N // self.num_beams_per_particle
-            down_sampled_ranges = [-1 for x in range(self.num_beams_per_particle)]
-
-            avg = 0
-            for i in range(N):
-                avg += 1.0 * ranges[i] / down_sample_scale
-                if(i % down_sample_scale == down_sample_scale - 1):
-                    down_sampled_ranges[int(math.floor(i/down_sample_scale))] = avg
-                    avg = 0
-            if(down_sampled_ranges[-1] == -1):
-                down_sampled_ranges[-1] = avg
-
-            return(down_sampled_ranges)
 
         ####################################
 
