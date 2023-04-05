@@ -35,8 +35,6 @@ class SensorModel:
 
         # Your sensor table will be a `table_width` x `table_width` np array:
         self.table_width = 201
-
-        self.map_resolution = 1
         ####################################
 
         # Precompute the sensor model table
@@ -54,6 +52,7 @@ class SensorModel:
         # Subscribe to the map
         self.map = None
         self.map_set = False
+        self.map_resolution = 1
         rospy.Subscriber(
                 self.map_topic,
                 OccupancyGrid,
@@ -131,10 +130,10 @@ class SensorModel:
         return self.alpha_hit * p_hit_z + self.alpha_short * self.p_short(z_k, d) + self.alpha_max * self.p_max(z_k) + self.alpha_rand * self.p_rand(z_k)
 
     def px_2_m(self, px):
-        return px*self.map_resolution*self.lidar_scale_to_map_scale
+        return px*float(self.map_resolution)*self.lidar_scale_to_map_scale
 
     def m_2_px(self, m):
-        return m/(self.map_resolution*self.lidar_scale_to_map_scale)
+        return m/(float(self.map_resolution)*self.lidar_scale_to_map_scale)
 
     def evaluate(self, particles, observation):
         """
@@ -169,9 +168,8 @@ class SensorModel:
         # This produces a matrix of size N x num_beams_per_particle 
 
         scans = self.scan_sim.scan(particles)
-        # Assume observation is already downsampled
 
-        observation = np.array(self.setDownSamplePoints(observation))
+        #observation = np.array(self.setDownSamplePoints(observation))
         
         # First convert ray trace and lidar units to px 
         scans = self.m_2_px(scans)
@@ -180,16 +178,20 @@ class SensorModel:
         # Clip Values Between 0 and z_max and rounds them
         scans = np.clip(scans,0,self.z_max_px)
         obs = np.clip(obs,0,self.z_max_px)
-        clean_scans = np.rint(scans)
-        clean_obs = np.rint(obs)
+        clean_scans = np.rint(scans).astype(np.uint16)
+        clean_obs = np.rint(obs).astype(np.uint16)
 
         # Compute probabilities
-        probs = np.ones(clean_scans.shape[0],np.double)
-        
+        probs = np.ones(clean_scans.shape[0],np.float64)
         for i in range(clean_scans.shape[0]): #rows
             for j in range(clean_scans.shape[1]): #columns
-                probs[i] *= self.sensor_model_table[int(clean_scans[i][j])][int(clean_obs[j])]
-        return probs
+                curdec = self.sensor_model_table[clean_obs[j]][clean_scans[i][j]]
+                probs[i] *= curdec
+                
+
+        final_result = np.power(probs, 1.0/2.2)
+        
+        return final_result
     
         
     def setDownSamplePoints(self, ranges):
@@ -212,6 +214,7 @@ class SensorModel:
 
     def map_callback(self, map_msg):
         # Convert the map to a numpy array
+        self.map_resolution = map_msg.info.resolution
         self.map = np.array(map_msg.data, np.double)/100.
         self.map = np.clip(self.map, 0, 1)
 
