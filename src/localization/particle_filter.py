@@ -9,6 +9,7 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from tf.transformations import euler_from_quaternion
+from scipy import signal
 
 class ParticleFilter:
 
@@ -28,13 +29,14 @@ class ParticleFilter:
         #     information, and *not* use the pose component.
         scan_topic = rospy.get_param("~scan_topic", "/scan")
         odom_topic = rospy.get_param("~odom_topic", "/odom")
+        
         self.laser_sub = rospy.Subscriber(scan_topic, LaserScan,
                                           self.lidar_callback, 
                                           queue_size=1)
         self.odom_sub  = rospy.Subscriber(odom_topic, Odometry,
                                           self.odom_callback, 
                                           queue_size=1)
-
+        self.num_beams_per_particle = rospy.get_param("~num_beams_per_particle", 100)
         #  *Important Note #2:* You must respond to pose
         #     initialization requests sent to the /initialpose
         #     topic. You can test that this works properly using the
@@ -65,26 +67,25 @@ class ParticleFilter:
         #
         # Publish a transformation frame between the map
         # and the particle_filter_frame.
-        self.N = 200
         self.points = None
         self.down_sampled_points = None
         self.probs = None
 
-    def setDownSamplePoints(self, ranges):
-        N = len(ranges)
-        down_sample_scale = N // self.N
-        down_sampled_ranges = [-1 * self.N]
+    # def setDownSamplePoints(self, ranges):
+    #     N = len(ranges)
+    #     down_sample_scale = N // self.N
+    #     down_sampled_ranges = [-1 * self.N]
 
-        avg = 0
-        for i in range(N):
-            avg += 1.0 * ranges[i] / down_sample_scale
-            if(i % down_sample_scale == down_sample_scale - 1):
-                down_sampled_ranges[i] = avg
-                avg = 0
-        if(down_sampled_ranges[-1] == -1):
-            down_sampled_ranges[-1] = avg
+    #     avg = 0
+    #     for i in range(N):
+    #         avg += 1.0 * ranges[i] / down_sample_scale
+    #         if(i % down_sample_scale == down_sample_scale - 1):
+    #             down_sampled_ranges[i] = avg
+    #             avg = 0
+    #     if(down_sampled_ranges[-1] == -1):
+    #         down_sampled_ranges[-1] = avg
 
-        self.down_sampled_points = down_sampled_ranges
+    #     self.down_sampled_points = down_sampled_ranges
 
     def lidar_callback(self, msg):
         angle_min = msg.angle_min
@@ -95,7 +96,7 @@ class ParticleFilter:
         range_max = msg.range_max
 
         #make sure down sampled points are set
-        self.setDownSamplePoints(ranges)
+        self.down_sampled_points = signal.decimate(ranges, self.num_beams_per_particle)
         
         #update probability
         self.probs = self.sensor_model(self.points, self.down_sampled_ranges)
