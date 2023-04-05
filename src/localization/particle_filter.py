@@ -95,7 +95,7 @@ class ParticleFilter:
         range_max = msg.range_max
 
         #make sure down sampled points are set
-        self.setDownSamplePoints()
+        self.setDownSamplePoints(ranges)
         
         #update probability
         self.probs = self.sensor_model(self.points, self.down_sampled_ranges)
@@ -123,7 +123,7 @@ class ParticleFilter:
         odom = [x, y, theta]
 
         #make sure down sampled points are set
-        self.setDownSamplePoints()
+        # self.setDownSamplePoints()
 
         #update points
         self.down_sampled_points = np.array(self.motion_model(self.down_sampled_points, odom))
