@@ -189,7 +189,6 @@ class ParticleFilter:
             # there's a seciton in the notebook about this
 
             #self.avg_location = self.get_average()
-
             self.visualise_particles()
 
     def get_odometry(self, k):
@@ -216,13 +215,10 @@ class ParticleFilter:
         #This finds x,y components of delta X but we are still missing theta
         #Theta of world to k equals theta of world to k-1 + theta of k-1 to k. 
         #Therefore, theta of k-1 to k is theta of world to k - theta of world to k-1
-        DeltaX[2] = k[2] - self.old_location[2] 
-
+        DeltaX[2] = k[2] - self.old_location[2]
         self.old_location = k
-
         return DeltaX
         
-
        
     def visualise_particles(self):
          '''
@@ -242,7 +238,7 @@ class ParticleFilter:
             p = Pose()
             p.position.x = self.particles[i][0]
             p.position.y = self.particles[i][1]
-            quat_angle = quaternion_from_euler(0, 0, self.particles[i][1])
+            quat_angle = quaternion_from_euler(0, 0, self.particles[i][2])
             p.orientation.x = quat_angle[0]
             p.orientation.y = quat_angle[1]
             p.orientation.z = quat_angle[2]
