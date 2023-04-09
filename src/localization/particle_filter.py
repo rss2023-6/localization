@@ -9,6 +9,7 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from tf.transformations import euler_from_quaternion
+from tf.transformations import quaternion_from_euler
 from geometry_msgs.msg import PoseArray
 from geometry_msgs.msg import Pose
 from scipy import signal
@@ -62,6 +63,8 @@ class ParticleFilter:
         self.motion_model = MotionModel()
         self.sensor_model = SensorModel()
 
+        self.N = 200
+
         # Implement the MCL algorithm
         # using the sensor model and the motion model
         #
@@ -75,26 +78,31 @@ class ParticleFilter:
         self.down_sampled_points = None
         self.probs = None
 
-    # def setDownSamplePoints(self, ranges):
-    #     N = len(ranges)
-    #     down_sample_scale = N // self.N
-    #     down_sampled_ranges = [-1 * self.N]
-
-    #     avg = 0
-    #     for i in range(N):
-    #         avg += 1.0 * ranges[i] / down_sample_scale
-    #         if(i % down_sample_scale == down_sample_scale - 1):
-    #             down_sampled_ranges[i] = avg
-    #             avg = 0
-    #     if(down_sampled_ranges[-1] == -1):
-    #         down_sampled_ranges[-1] = avg
-
-    #     self.down_sampled_points = down_sampled_ranges
-
     def transformation_matrix(self,th):
         return np.array([[np.cos(th), -np.sin(th), 0],
                             [np.sin(th), np.cos(th), 0],
                             [0, 0, 1]])
+    
+
+    # def get_most_likely_point(way="avg"):
+    #     if way == "avg":
+    #         self.get_average()
+    #     if way == "big_prob":
+    #         self.max_prob_point()
+
+    # def max_prob_point():
+    #     pass
+
+    def get_average():
+        avg_x = 0
+        avg_y = 0
+        N = len(self.down_sampled_points)
+        for i in range(len(self.down_sampled_points)):
+            p = self.down_sampled_points[i]
+            point = np.matmul(self.transformation_matrix(p[2]), np.array([[p[0], p[1]]]))
+            avg_x += point[0][0] / N
+            avg_y += point[1][0] / N
+        return (avg_x, avg_y)
 
     def lidar_callback(self, msg):
         angle_min = msg.angle_min
@@ -108,15 +116,25 @@ class ParticleFilter:
         self.down_sampled_points = signal.decimate(ranges, self.num_beams_per_particle)
         
         #update probability
-        self.probs = self.sensor_model(self.points, self.down_sampled_ranges)
+        self.probs = self.sensor_model.evaluate(self.down_sampled_points, ranges)
 
         #resample points
+        #try random.choices if this throws errors
         self.down_sampled_points = np.random.choice(self.down_sampled_points, self.N, self.probs)
+
+        (odom_x, odom_y, odom_theta) = self.get_average()
+        odom_msg = Odometry()
+        odom_msg.pose.pose.position.x = odom_x
+        odom_msg.pose.pose.position.y = odom_y
+
+        odom_msg.pose.pose.orientation = quaternion_from_euler(0, 0, odom_theta)
+        self.odom_pub(odom_msg)
     
     def odom_callback(self, msg):
         header = msg.header
         child_frame_id = msg.child_frame_id
 
+        #ISSUE 1: odom only takes one point as publish but we want to work with multiple points
         pose = msg.pose.pose
         x = pose.position.x
         y = pose.position.y
@@ -142,26 +160,16 @@ class ParticleFilter:
         #NOTE: If this ever throughs an array is numpy error, there might've been concurrecy issues between probability and odom models
         #IMPORTANT TODO: FIX the average position thing to work with angles, right now I just straight averaged, which doesn't work for sphereical coordinates, 
         # there's a seciton in the notebook about this
-        avg_x = 0
-        avg_y = 0
-        N = len(self.down_sampled_points)
-        for i in range(len(self.down_sampled_points)):
-            p = self.down_sampled_points[i]
-            point = np.matmul(self.transformation_matrix(p[2]), np.array([[p[0], p[1]]]))
-            avg_x += point[0][0] / N
-            avg_y += point[1][0] / N
-       
-        average = (avg_x, avg_y)
 
+        (avg_x, avg_y) = self.get_average()
+
+        #publish average pose to odom viz for visualization
         pose = Pose()
         pose.position.x = avg_x
         pose.position.y = avg_y
-
         pose_msg = PoseArray()
         pose_msg.poses = [pose]
-
         self.location_viz_pub.pub(pose_msg)
-        # self.odom_pub.pub(self.point_to_message(average[0], average[1], average[2]))
 
     def point_to_message(x, y, theta):
         msg = PoseWithCovarianceStamped()
@@ -186,7 +194,7 @@ class ParticleFilter:
         q_w = msg.pose.orientation.w
     
         roh, pitch, theta = euler_from_quaternion(q_x, q_y, q_z, q_w)
-        self.points = [[x, y, theta] * self.N]
+        self.down_sampled_points = [[x, y, theta] * self.N]
 
         #publishes initial pose to odometry data -> goes to odom model I think
         msg = PoseWithCovarianceStamped()
