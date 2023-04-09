@@ -90,9 +90,7 @@ class SensorModel:
             table[i] = table[i]/sum(table[i]) 
         table = np.swapaxes(table, 0, 1)
         self.sensor_model_table = table #directly modify self.sensor_model_table
-
         #self.visualize_model()
-
 
     def visualize_model(self):
         x = np.linspace(0, self.table_width, self.table_width)
@@ -189,7 +187,6 @@ class SensorModel:
                 curdec = self.sensor_model_table[clean_obs[j]][clean_scans[i][j]]
                 probs[i] *= curdec
                 
-
         final_result = np.power(probs, 1.0/2.2)
         
         return final_result

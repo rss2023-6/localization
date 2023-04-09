@@ -3,13 +3,19 @@
 import rospy
 from sensor_model import SensorModel
 from motion_model import MotionModel
-
 import numpy as np
+import random
+from scipy import signal
+
+from visualization_msgs.msg import Marker
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
-from tf.transformations import euler_from_quaternion
-from scipy import signal
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
+from  geometry_msgs.msg import TransformStamped
+import tf2_ros as tf2
+from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import Pose
 
 class ParticleFilter:
 
@@ -29,6 +35,9 @@ class ParticleFilter:
         #     information, and *not* use the pose component.
         scan_topic = rospy.get_param("~scan_topic", "/scan")
         odom_topic = rospy.get_param("~odom_topic", "/odom")
+        self.num_particles = rospy.get_param("~num_particles", 200)
+        self.num_beams_per_particle = rospy.get_param("~num_beams_per_particle", 1)
+        self.particles = np.zeros((self.num_particles, 3))
         
         self.laser_sub = rospy.Subscriber(scan_topic, LaserScan,
                                           self.lidar_callback, 
@@ -36,14 +45,14 @@ class ParticleFilter:
         self.odom_sub  = rospy.Subscriber(odom_topic, Odometry,
                                           self.odom_callback, 
                                           queue_size=1)
-        self.num_beams_per_particle = rospy.get_param("~num_beams_per_particle", 100)
+
         #  *Important Note #2:* You must respond to pose
         #     initialization requests sent to the /initialpose
         #     topic. You can test that this works properly using the
         #     "Pose Estimate" feature in RViz, which publishes to
         #     /initialpose.
         self.pose_sub  = rospy.Subscriber("/initialpose", PoseWithCovarianceStamped,
-                                          self.pose_initialization_callback, 
+                                          self.pose_init_callback, 
                                           queue_size=1)
 
         #  *Important Note #3:* You must publish your pose estimate to
@@ -53,7 +62,7 @@ class ParticleFilter:
         #     odometry you publish here should be with respect to the
         #     "/map" frame.
         self.odom_pub  = rospy.Publisher("/pf/pose/odom", Odometry, queue_size = 1)
-        
+        self.pub_particles = rospy.Publisher("/particles", PoseArray, queue_size = 1)
         # Initialize the models
         self.motion_model = MotionModel()
         self.sensor_model = SensorModel()
@@ -67,109 +76,130 @@ class ParticleFilter:
         #
         # Publish a transformation frame between the map
         # and the particle_filter_frame.
-        self.points = None
-        self.down_sampled_points = None
-        self.probs = None
 
-    # def setDownSamplePoints(self, ranges):
-    #     N = len(ranges)
-    #     down_sample_scale = N // self.N
-    #     down_sampled_ranges = [-1 * self.N]
+        #initial particles
+        
+        #Whenever you get odometry data use the motion model to update the particle positions
 
-    #     avg = 0
-    #     for i in range(N):
-    #         avg += 1.0 * ranges[i] / down_sample_scale
-    #         if(i % down_sample_scale == down_sample_scale - 1):
-    #             down_sampled_ranges[i] = avg
-    #             avg = 0
-    #     if(down_sampled_ranges[-1] == -1):
-    #         down_sampled_ranges[-1] = avg
+        #Whenever you get a lidar scan use the sensor model to update the particle weights
 
-    #     self.down_sampled_points = down_sampled_ranges
+        #Resample the particles
+
+        #Publish the new particle positions' mean as a transformation frame
+
+
+
 
     def lidar_callback(self, msg):
-        angle_min = msg.angle_min
-        angle_max = msg.angle_max
-        angle_increment = msg.angle_increment
-        time_increment = msg.time_increment
-        ranges = msg.ranges
-        range_max = msg.range_max
-
-        #make sure down sampled points are set
-        self.down_sampled_points = signal.decimate(ranges, self.num_beams_per_particle)
+        rospy.loginfo(len(msg.ranges))
+        rospy.loginfo(len(signal.decimate(np.array(msg.ranges), self.num_beams_per_particle)))
+        updated_prob = self.sensor_model.evaluate(self.particles, signal.decimate(np.array(msg.ranges), self.num_beams_per_particle))
+        updated_prob = updated_prob/np.sum(updated_prob)
         
-        #update probability
-        self.probs = self.sensor_model(self.points, self.down_sampled_ranges)
+        rowindexarray = np.arange(self.num_particles)
+        sampled_rows = np.random.choice(rowindexarray, size=self.num_particles, p=updated_prob)
+        sampled_points = self.particles[sampled_rows]
+        self.particles = sampled_points
+        self.avg_and_publish()
 
-        #resample points
-        self.down_sampled_points = np.random.choice(self.down_sampled_points, self.N, self.probs)
-    
     def odom_callback(self, msg):
-        header = msg.header
-        child_frame_id = msg.child_frame_id
+        odometry = np.array([msg.twist.twist.linear.x, msg.twist.twist.linear.y, msg.twist.twist.angular.z])
+        updated_particles = self.motion_model.evaluate(self.particles, odometry)
+        self.particles = updated_particles
+        self.avg_and_publish()
+        self.visualise_particles()
 
-        pose = msg.pose.pose
-        x = pose.position.x
-        y = pose.position.y
-        z = pose.position.z
-        
-        q_x = pose.orientation.x
-        q_y = pose.orientation.y
-        q_z = pose.orientation.z
-        q_w = pose.orientation.w
+    def pose_init_callback(self, msg):
+        #initialize particles
+        x = msg.pose.pose.position.x
+        y = msg.pose.pose.position.y
 
-        roh, pitch, theta = euler_from_quaternion(q_x, q_y, q_z, q_w)
-        # linear = msg.twist.linear
-        # angular = msg.twist.agular
-        odom = [x, y, theta]
-
-        #make sure down sampled points are set
-        # self.setDownSamplePoints()
-
-        #update points
-        self.down_sampled_points = np.array(self.motion_model(self.down_sampled_points, odom))
-        
-        #publish averaged position
-        #NOTE: If this ever throughs an array is numpy error, there might've been concurrecy issues between probability and odom models
-        #IMPORTANT TODO: FIX the average position thing to work with angles, right now I just straight averaged, which doesn't work for sphereical coordinates, 
-        # there's a seciton in the notebook about this
-        average = np.average(self.down_sampled_points, axis=0)
-        self.odom_pub.pub(self.point_to_message(average[0], average[1], average[2]))
-
-    def point_to_message(x, y, theta):
-        msg = PoseWithCovarianceStamped()
-        msg.pose.pose.position.x = x
-        msg.pose.pose.position.y = y
-
-        o = quaternion_from_euler(0,0,theta)
-        msg.pose.pose.orientation.x = o[0]
-        msg.pose.pose.orientation.y = o[1]
-        msg.pose.pose.orientation.z = o[2]
-        msg.pose.pose.orientation.w = o[3]
-        return msg
-
-    def pose_initialization_callback(self, msg):
-        x = msg.pose.position.x
-        y = msg.pose.position.y
-        z = msg.pose.position.z
-
-        q_x = msg.pose.orientation.x
-        q_y = msg.pose.orientation.y
-        q_z = msg.pose.orientation.z
-        q_w = msg.pose.orientation.w
+        q_x = msg.pose.pose.orientation.x
+        q_y = msg.pose.pose.orientation.y
+        q_z = msg.pose.pose.orientation.z
+        q_w = msg.pose.pose.orientation.w
     
-        roh, pitch, theta = euler_from_quaternion(q_x, q_y, q_z, q_w)
-        self.points = [[x, y, theta] * self.N]
+        roh, pitch, theta = euler_from_quaternion([q_x, q_y, q_z, q_w])
 
-        #publishes initial pose to odometry data -> goes to odom model I think
-        msg = PoseWithCovarianceStamped()
-        msg.pose.pose.position.x = x
-        msg.pose.pose.position.y = y
-        msg.pose.pose.orientation.x = q_x
-        msg.pose.pose.orientation.y = q_y
-        msg.pose.pose.orientation.z = q_z
-        msg.pose.pose.orientation.w = q_w
-        self.odom_pub.publish(msg)
+        for i in range(self.num_particles):
+            self.particles[i,0] = x + random.gauss(0, .1)
+            self.particles[i,1] = y + random.gauss(0, .1)
+            self.particles[i,2] = theta + random.gauss(0, .1)
+        rospy.loginfo(self.particles)
+    def avg_and_publish(self):
+        x = 0
+        y = 0
+        theta_unit_x = 0
+        theta_unit_y = 0
+        for i in range(self.num_particles):
+            x += self.particles[i,0]
+            y += self.particles[i,1]
+            theta_unit_x += np.cos(self.particles[i,2])
+            theta_unit_y += np.sin(self.particles[i,2])
+        x /= self.num_particles
+        y /= self.num_particles
+        theta_unit_x /= self.num_particles
+        theta_unit_y /= self.num_particles
+        theta = np.arctan2(theta_unit_y, theta_unit_x)
+
+        qx, qy, qz, qw = quaternion_from_euler(0, 0, theta)
+
+        odom = Odometry()
+        odom.pose.pose.position.x = x
+        odom.pose.pose.position.y = y
+        odom.pose.pose.position.z = 0
+        odom.pose.pose.orientation.x = qx
+        odom.pose.pose.orientation.y = qy
+        odom.pose.pose.orientation.z = qz
+        odom.pose.pose.orientation.w = qw
+        self.odom_pub.publish(odom)
+
+        broadcaster = tf2.TransformBroadcaster()
+
+        t = TransformStamped()
+        t.header.stamp = rospy.Time().now()
+        t.header.frame_id = "world"
+        t.child_frame_id = self.particle_filter_frame
+
+        t.transform.translation.x = x
+        t.transform.translation.y = y
+
+        t.transform.rotation.x = qx
+        t.transform.rotation.y = qy
+        t.transform.rotation.z = qz
+        t.transform.rotation.w = qw
+        
+        broadcaster.sendTransform(t)
+    def visualise_particles(self):
+         '''
+         Publishes a visualation of particles to view them moving in rviz. 
+         Only useful for testing/validation. Should not be running in final solution
+
+         input: 
+            particles: N x 3 matrix of the form:
+                [x0 y0 theta0]
+                [x1 y0 theta1]
+                [    ...     ]
+
+         '''
+         poses = np.empty(self.num_particles, dtype=Pose) 
+         for i in range(self.num_particles):
+            #convert particles x,y and theta into poses for display
+            p = Pose()
+            p.position.x = self.particles[i,0]
+            p.position.y = self.particles[i,1]
+            quat_angle = quaternion_from_euler(0, 0, self.particles[i,2])
+            p.orientation.x = quat_angle[0]
+            p.orientation.y = quat_angle[1]
+            p.orientation.z = quat_angle[2]
+            p.orientation.w = quat_angle[3]
+            poses[i] = p
+
+         pa = PoseArray()
+         pa.poses = poses 
+         pa.header.frame_id = "map"
+
+         self.pub_particles.publish(pa)
 
 if __name__ == "__main__":
     rospy.init_node("particle_filter")
