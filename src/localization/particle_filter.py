@@ -134,7 +134,9 @@ class ParticleFilter:
         theta_unit_y += np.average(np.sin(self.particles[:,2]))
         theta = np.arctan2(theta_unit_y, theta_unit_x)
 
+        rospy.loginfo("x: {}, y: {}, theta: {}".format(x, y, theta))
         qx, qy, qz, qw = quaternion_from_euler(0, 0, theta)
+        rospy.loginfo("qx: {}, qy: {}, qz: {}, qw: {}".format(qx, qy, qz, qw))
 
         odom = Odometry()
         odom.header.stamp = rospy.Time().now()
@@ -194,7 +196,6 @@ class ParticleFilter:
          pa = PoseArray()
          pa.poses = poses 
          pa.header.frame_id = "map"
-
          self.pub_particles.publish(pa)
 
 if __name__ == "__main__":
