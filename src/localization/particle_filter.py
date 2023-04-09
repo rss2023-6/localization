@@ -75,7 +75,7 @@ class ParticleFilter:
         # Publish a transformation frame between the map
         # and the particle_filter_frame.
         self.points = None
-        self.down_sampled_points = None
+        self.points = None
         self.probs = None
 
     def transformation_matrix(self,th):
@@ -83,22 +83,12 @@ class ParticleFilter:
                             [np.sin(th), np.cos(th), 0],
                             [0, 0, 1]])
     
-
-    # def get_most_likely_point(way="avg"):
-    #     if way == "avg":
-    #         self.get_average()
-    #     if way == "big_prob":
-    #         self.max_prob_point()
-
-    # def max_prob_point():
-    #     pass
-
     def get_average():
         avg_x = 0
         avg_y = 0
-        N = len(self.down_sampled_points)
-        for i in range(len(self.down_sampled_points)):
-            p = self.down_sampled_points[i]
+        N = len(self.points)
+        for i in range(len(self.points)):
+            p = self.points[i]
             point = np.matmul(self.transformation_matrix(p[2]), np.array([[p[0], p[1]]]))
             avg_x += point[0][0] / N
             avg_y += point[1][0] / N
@@ -113,14 +103,14 @@ class ParticleFilter:
         range_max = msg.range_max
 
         #make sure down sampled points are set
-        self.down_sampled_points = signal.decimate(ranges, self.num_beams_per_particle)
+        self.points = signal.decimate(ranges, self.num_beams_per_particle)
         
         #update probability
-        self.probs = self.sensor_model.evaluate(self.down_sampled_points, ranges)
+        self.probs = self.sensor_model.evaluate(self.points, ranges)
 
         #resample points
         #try random.choices if this throws errors
-        self.down_sampled_points = np.random.choice(self.down_sampled_points, self.N, self.probs)
+        self.points = np.random.choice(self.points, self.N, self.probs)
 
         (odom_x, odom_y, odom_theta) = self.get_average()
         odom_msg = Odometry()
@@ -154,7 +144,7 @@ class ParticleFilter:
         # self.setDownSamplePoints()
 
         #update points
-        self.down_sampled_points = np.array(self.motion_model(self.down_sampled_points, odom))
+        self.points = np.array(self.motion_model(self.points, odom))
         
         #publish averaged position
         #NOTE: If this ever throughs an array is numpy error, there might've been concurrecy issues between probability and odom models
@@ -194,7 +184,7 @@ class ParticleFilter:
         q_w = msg.pose.orientation.w
     
         roh, pitch, theta = euler_from_quaternion(q_x, q_y, q_z, q_w)
-        self.down_sampled_points = [[x, y, theta] * self.N]
+        self.points = [[x, y, theta] * self.N]
 
         #publishes initial pose to odometry data -> goes to odom model I think
         msg = PoseWithCovarianceStamped()
