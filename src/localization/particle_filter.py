@@ -9,6 +9,8 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from tf.transformations import euler_from_quaternion
+from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import Pose
 from scipy import signal
 
 class ParticleFilter:
@@ -52,7 +54,9 @@ class ParticleFilter:
         #     provide the twist part of the Odometry message. The
         #     odometry you publish here should be with respect to the
         #     "/map" frame.
+
         self.odom_pub  = rospy.Publisher("/pf/pose/odom", Odometry, queue_size = 1)
+        self.location_viz_pub = rospy.Publisher("base_link_pf", PoseArray, queue_size = 1)
         
         # Initialize the models
         self.motion_model = MotionModel()
@@ -86,6 +90,11 @@ class ParticleFilter:
     #         down_sampled_ranges[-1] = avg
 
     #     self.down_sampled_points = down_sampled_ranges
+
+    def transformation_matrix(self,th):
+        return np.array([[np.cos(th), -np.sin(th), 0],
+                            [np.sin(th), np.cos(th), 0],
+                            [0, 0, 1]])
 
     def lidar_callback(self, msg):
         angle_min = msg.angle_min
@@ -133,8 +142,26 @@ class ParticleFilter:
         #NOTE: If this ever throughs an array is numpy error, there might've been concurrecy issues between probability and odom models
         #IMPORTANT TODO: FIX the average position thing to work with angles, right now I just straight averaged, which doesn't work for sphereical coordinates, 
         # there's a seciton in the notebook about this
-        average = np.average(self.down_sampled_points, axis=0)
-        self.odom_pub.pub(self.point_to_message(average[0], average[1], average[2]))
+        avg_x = 0
+        avg_y = 0
+        N = len(self.down_sampled_points)
+        for i in range(len(self.down_sampled_points)):
+            p = self.down_sampled_points[i]
+            point = np.matmul(self.transformation_matrix(p[2]), np.array([[p[0], p[1]]]))
+            avg_x += point[0][0] / N
+            avg_y += point[1][0] / N
+       
+        average = (avg_x, avg_y)
+
+        pose = Pose()
+        pose.position.x = avg_x
+        pose.position.y = avg_y
+
+        pose_msg = PoseArray()
+        pose_msg.poses = [pose]
+
+        self.location_viz_pub.pub(pose_msg)
+        # self.odom_pub.pub(self.point_to_message(average[0], average[1], average[2]))
 
     def point_to_message(x, y, theta):
         msg = PoseWithCovarianceStamped()
