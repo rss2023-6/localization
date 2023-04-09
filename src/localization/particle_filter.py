@@ -87,12 +87,7 @@ class ParticleFilter:
 
         #Publish the new particle positions' mean as a transformation frame
 
-
-
-
     def lidar_callback(self, msg):
-        rospy.loginfo(len(msg.ranges))
-        rospy.loginfo(len(signal.decimate(np.array(msg.ranges), self.num_beams_per_particle)))
         updated_prob = self.sensor_model.evaluate(self.particles, signal.decimate(np.array(msg.ranges), self.num_beams_per_particle))
         updated_prob = updated_prob/np.sum(updated_prob)
         
@@ -126,25 +121,25 @@ class ParticleFilter:
             self.particles[i,1] = y + random.gauss(0, .1)
             self.particles[i,2] = theta + random.gauss(0, .1)
         rospy.loginfo(self.particles)
+
     def avg_and_publish(self):
         x = 0
         y = 0
         theta_unit_x = 0
         theta_unit_y = 0
-        for i in range(self.num_particles):
-            x += self.particles[i,0]
-            y += self.particles[i,1]
-            theta_unit_x += np.cos(self.particles[i,2])
-            theta_unit_y += np.sin(self.particles[i,2])
-        x /= self.num_particles
-        y /= self.num_particles
-        theta_unit_x /= self.num_particles
-        theta_unit_y /= self.num_particles
+
+        x = np.average(self.particles[:,0])
+        y = np.average(self.particles[:,1])
+        theta_unit_x += np.average(np.cos(self.particles[:,2]))
+        theta_unit_y += np.average(np.sin(self.particles[:,2]))
         theta = np.arctan2(theta_unit_y, theta_unit_x)
 
         qx, qy, qz, qw = quaternion_from_euler(0, 0, theta)
 
         odom = Odometry()
+        odom.header.stamp = rospy.Time().now()
+        odom.header.frame_id = "/map"
+        odom.child_frame_id = "/base_link_pf"
         odom.pose.pose.position.x = x
         odom.pose.pose.position.y = y
         odom.pose.pose.position.z = 0
@@ -170,6 +165,7 @@ class ParticleFilter:
         t.transform.rotation.w = qw
         
         broadcaster.sendTransform(t)
+
     def visualise_particles(self):
          '''
          Publishes a visualation of particles to view them moving in rviz. 
