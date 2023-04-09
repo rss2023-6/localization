@@ -17,6 +17,9 @@ import tf2_ros as tf2
 from geometry_msgs.msg import PoseArray
 from geometry_msgs.msg import Pose
 
+from threading import Thread
+from threading import Lock
+
 class ParticleFilter:
 
     def __init__(self):
@@ -35,7 +38,7 @@ class ParticleFilter:
         #     information, and *not* use the pose component.
         scan_topic = rospy.get_param("~scan_topic", "/scan")
         odom_topic = rospy.get_param("~odom_topic", "/odom")
-        self.num_particles = rospy.get_param("~num_particles", 200)
+        self.num_particles = rospy.get_param("~num_particles", 10)
         self.num_beams_per_particle = rospy.get_param("~num_beams_per_particle", 1)
         self.particles = np.zeros((self.num_particles, 3))
         
@@ -66,6 +69,7 @@ class ParticleFilter:
         # Initialize the models
         self.motion_model = MotionModel()
         self.sensor_model = SensorModel()
+        self.lock = Lock()
 
         # Implement the MCL algorithm
         # using the sensor model and the motion model
@@ -88,21 +92,29 @@ class ParticleFilter:
         #Publish the new particle positions' mean as a transformation frame
 
     def lidar_callback(self, msg):
+        rospy.loginfo("lidar callback")
         updated_prob = self.sensor_model.evaluate(self.particles, signal.decimate(np.array(msg.ranges), self.num_beams_per_particle))
         updated_prob = updated_prob/np.sum(updated_prob)
         
         rowindexarray = np.arange(self.num_particles)
         sampled_rows = np.random.choice(rowindexarray, size=self.num_particles, p=updated_prob)
         sampled_points = self.particles[sampled_rows]
+        
+        self.lock.acquire()
         self.particles = sampled_points
         self.avg_and_publish()
+        self.lock.release()
 
     def odom_callback(self, msg):
+        rospy.loginfo("odom callback")
         odometry = np.array([msg.twist.twist.linear.x, msg.twist.twist.linear.y, msg.twist.twist.angular.z])
         updated_particles = self.motion_model.evaluate(self.particles, odometry)
+        
+        self.lock.acquire()
         self.particles = updated_particles
         self.avg_and_publish()
         self.visualise_particles()
+        self.lock.release()
 
     def pose_init_callback(self, msg):
         #initialize particles
@@ -195,6 +207,7 @@ class ParticleFilter:
 
          pa = PoseArray()
          pa.poses = poses 
+         pa.header.stamp = rospy.Time().now()
          pa.header.frame_id = "map"
          self.pub_particles.publish(pa)
 
