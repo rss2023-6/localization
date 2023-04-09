@@ -187,13 +187,15 @@ class ParticleFilter:
         self.points = [[x, y, theta] * self.N]
 
         #publishes initial pose to odometry data -> goes to odom model I think
-        msg = PoseWithCovarianceStamped()
-        msg.pose.pose.position.x = x
-        msg.pose.pose.position.y = y
-        msg.pose.pose.orientation.x = q_x
-        msg.pose.pose.orientation.y = q_y
-        msg.pose.pose.orientation.z = q_z
-        msg.pose.pose.orientation.w = q_w
+
+        odom_msg = Odometry()
+
+        odom_msg.pose.pose.position.x = x
+        odom_msg.pose.pose.position.y = y
+        odom_msg.pose.pose.orientation.x = q_x
+        odom_msg.pose.pose.orientation.y = q_y
+        odom_msg.pose.pose.orientation.z = q_z
+        odom_msg.pose.pose.orientation.w = q_w
         self.odom_pub.publish(msg)
 
 if __name__ == "__main__":
