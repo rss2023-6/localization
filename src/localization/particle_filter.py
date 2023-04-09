@@ -3,6 +3,7 @@
 import rospy
 from sensor_model import SensorModel
 from motion_model import MotionModel
+import random
 
 import numpy as np
 from sensor_msgs.msg import LaserScan
@@ -75,20 +76,22 @@ class ParticleFilter:
         # Publish a transformation frame between the map
         # and the particle_filter_frame.
         self.points = None
-        self.points = None
         self.probs = None
+        self.avg_location = np.zeros((1, 3))
+        self.old_avg = np.zeros([1, 3])
+        
 
     def transformation_matrix(self,th):
         return np.array([[np.cos(th), -np.sin(th), 0],
                             [np.sin(th), np.cos(th), 0],
                             [0, 0, 1]])
     
-    def get_average():
+    def get_average(points):
         avg_x = 0
         avg_y = 0
-        N = len(self.points)
-        for i in range(len(self.points)):
-            p = self.points[i]
+        N = len(points)
+        for i in range(len(points)):
+            p = points[i]
             point = np.matmul(self.transformation_matrix(p[2]), np.array([[p[0], p[1]]]))
             avg_x += point[0][0] / N
             avg_y += point[1][0] / N
@@ -112,19 +115,21 @@ class ParticleFilter:
         #try random.choices if this throws errors
         self.points = np.random.choice(self.points, self.N, self.probs)
 
-        (odom_x, odom_y, odom_theta) = self.get_average()
-        odom_msg = Odometry()
-        odom_msg.pose.pose.position.x = odom_x
-        odom_msg.pose.pose.position.y = odom_y
+        self.avg_location = self.get_average(self.points)
 
-        odom_msg.pose.pose.orientation = quaternion_from_euler(0, 0, odom_theta)
+        odom_msg = Odometry()
+        odom_msg.pose.pose.position.x = self.avg_location[0][0]
+        odom_msg.pose.pose.position.y = self.avg_location[0][1]
+
+        #Might have to do the q_x, q_y thing directly 
+        o = quaternion_from_euler(0, 0, self.avg_location[0][2])
+        odom_msg.pose.pose.orientation.x = o[0]
+        odom_msg.pose.pose.orientation.y = o[1]
+        odom_msg.pose.pose.orientation.z = o[2]
+        odom_msg.pose.pose.orientation.w = o[3]
         self.odom_pub(odom_msg)
     
     def odom_callback(self, msg):
-        header = msg.header
-        child_frame_id = msg.child_frame_id
-
-        #ISSUE 1: odom only takes one point as publish but we want to work with multiple points
         pose = msg.pose.pose
         x = pose.position.x
         y = pose.position.y
@@ -136,9 +141,10 @@ class ParticleFilter:
         q_w = pose.orientation.w
 
         roh, pitch, theta = euler_from_quaternion(q_x, q_y, q_z, q_w)
-        # linear = msg.twist.linear
-        # angular = msg.twist.agular
-        odom = [x, y, theta]
+
+        #TODO: We use the individual part 1) to calcualte the odometry data here instead of this bullshit but I can't think atm
+        odom = TODO
+        self.old_avg = self.avg_location
 
         #make sure down sampled points are set
         # self.setDownSamplePoints()
@@ -151,14 +157,24 @@ class ParticleFilter:
         #IMPORTANT TODO: FIX the average position thing to work with angles, right now I just straight averaged, which doesn't work for sphereical coordinates, 
         # there's a seciton in the notebook about this
 
-        (avg_x, avg_y) = self.get_average()
+        self.avg_location = self.get_average()
 
         #publish average pose to odom viz for visualization
         pose = Pose()
-        pose.position.x = avg_x
-        pose.position.y = avg_y
+        pose.position.x = self.avg_location[0][0]
+        pose.position.y = self.avg_location[0][1]
+
+
+        #Might have to do the q_x, q_y thing directly 
+        o = quaternion_from_euler(0, 0, self.avg_location[0][2])
+        pose.orientation.x = o[0]
+        pose.orientation.y = o[1]
+        pose.orientation.z = o[2]
+        pose.orientation.w = o[3]
+
         pose_msg = PoseArray()
         pose_msg.poses = [pose]
+
         self.location_viz_pub.pub(pose_msg)
 
     def point_to_message(x, y, theta):
@@ -186,10 +202,12 @@ class ParticleFilter:
         roh, pitch, theta = euler_from_quaternion(q_x, q_y, q_z, q_w)
         self.points = [[x, y, theta] * self.N]
 
+        self.avg_location[0][0] = x
+        self.avg_location[0][1] = y
+        self.avg_location[0][2] = theta
+
         #publishes initial pose to odometry data -> goes to odom model I think
-
         odom_msg = Odometry()
-
         odom_msg.pose.pose.position.x = x
         odom_msg.pose.pose.position.y = y
         odom_msg.pose.pose.orientation.x = q_x
