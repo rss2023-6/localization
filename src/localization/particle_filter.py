@@ -43,7 +43,7 @@ class ParticleFilter:
         self.motion_model = MotionModel()
         self.sensor_model = SensorModel()
 
-        self.num_particles = rospy.get_param("~num_particles", 10)
+        self.num_particles = rospy.get_param("~num_particles", 200)
         self.num_beams_per_particle = rospy.get_param("~num_beams_per_particle", 1)
         self.particles = np.zeros((self.num_particles, 3))
         
@@ -96,7 +96,6 @@ class ParticleFilter:
         #Publish the new particle positions' mean as a transformation frame
 
     def lidar_callback(self, msg):
-        rospy.loginfo("lidar callback")
         if not self.initialized:
             return
         with self.lock:
@@ -110,12 +109,11 @@ class ParticleFilter:
             self.avg_and_publish()
 
     def odom_callback(self, msg):
-        rospy.loginfo("odom callback")
         if not self.initialized:
             return
         with self.lock:
             if(self.previous_odom_message != None):
-                dt = (msg.header.stamp - self.prev_data.header.stamp).to_sec()
+                dt = (msg.header.stamp - self.previous_odom_message.header.stamp).to_sec()
                 odometry = np.array([msg.twist.twist.linear.x * dt, msg.twist.twist.linear.y * dt, msg.twist.twist.angular.z * dt])
                 updated_particles = self.motion_model.evaluate(self.particles, odometry)
                 self.particles = updated_particles
@@ -140,7 +138,7 @@ class ParticleFilter:
                 self.particles[i,0] = x + random.gauss(0, .1)
                 self.particles[i,1] = y + random.gauss(0, .1)
                 self.particles[i,2] = theta + random.gauss(0, .1)
-            rospy.loginfo(self.particles)
+            # rospy.loginfo(self.particles)
         self.initialized = True
 
     def avg_and_publish(self):
@@ -155,9 +153,9 @@ class ParticleFilter:
         theta_unit_y += np.average(np.sin(self.particles[:,2]))
         theta = np.arctan2(theta_unit_y, theta_unit_x)
 
-        rospy.loginfo("x: {}, y: {}, theta: {}".format(x, y, theta))
+        # rospy.loginfo("x: {}, y: {}, theta: {}".format(x, y, theta))
         qx, qy, qz, qw = quaternion_from_euler(0, 0, theta)
-        rospy.loginfo("qx: {}, qy: {}, qz: {}, qw: {}".format(qx, qy, qz, qw))
+        # rospy.loginfo("qx: {}, qy: {}, qz: {}, qw: {}".format(qx, qy, qz, qw))
 
         odom = Odometry()
         odom.header.stamp = rospy.Time().now()

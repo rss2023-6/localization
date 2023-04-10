@@ -1,12 +1,12 @@
 # A reasonable number to start with
-num_particles: 200
+num_particles: 50 #200
 
 # The number of lidar beams emitted from
 # each particle. This doesn't need to be
 # equal to the actual number (>1000)
 # so long as you downsample properly
 
-num_beams_per_particle: 1 #in Penny's simulator there are only 100 laser scans idk why, should be 100 tho
+num_beams_per_particle: 10 #in Penny's simulator there are only 100 laser scans idk why, should be 100 tho
 
 # The field of view centered around theta=0
 scan_field_of_view: 4.71 # radians
