@@ -24,9 +24,6 @@ class ParticleFilter:
 
     def __init__(self):
         # Get parameters
-        self.particle_filter_frame = \
-                rospy.get_param("~particle_filter_frame")
-
         # Initialize publishers/subscribers
         #
         #  *Important Note #1:* It is critical for your particle
@@ -38,6 +35,9 @@ class ParticleFilter:
         #     information, and *not* use the pose component.
         scan_topic = rospy.get_param("~scan_topic", "/scan")
         odom_topic = rospy.get_param("~odom_topic", "/odom")
+        self.map_topic = rospy.get_param("~map_topic", "/map")
+        self.particle_filter_frame = rospy.get_param("~particle_filter_frame", "/base_link_pf")
+        
         self.initialized = False
 
         self.motion_model = MotionModel()
@@ -134,7 +134,7 @@ class ParticleFilter:
             q_z = msg.pose.pose.orientation.z
             q_w = msg.pose.pose.orientation.w
         
-            roh, pitch, theta = euler_from_quaternion([q_x, q_y, q_z, q_w])
+            roll, pitch, theta = euler_from_quaternion([q_x, q_y, q_z, q_w])
 
             for i in range(self.num_particles):
                 self.particles[i,0] = x + random.gauss(0, .1)
@@ -161,8 +161,8 @@ class ParticleFilter:
 
         odom = Odometry()
         odom.header.stamp = rospy.Time().now()
-        odom.header.frame_id = "/map"
-        # odom.child_frame_id = "/base_link_pf"
+        odom.header.frame_id = self.map_topic
+        odom.child_frame_id = self.particle_filter_frame
         odom.pose.pose.position.x = x
         odom.pose.pose.position.y = y
         odom.pose.pose.position.z = 0
