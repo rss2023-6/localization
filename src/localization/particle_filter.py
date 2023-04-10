@@ -18,7 +18,6 @@ from geometry_msgs.msg import PoseArray
 from geometry_msgs.msg import Pose
 
 from threading import Thread
-from threading import Lock
 from threading import RLock
 
 class ParticleFilter:
@@ -54,8 +53,6 @@ class ParticleFilter:
                                           self.odom_callback, 
                                           queue_size=1)
         
-
-
         #  *Important Note #2:* You must respond to pose
         #     initialization requests sent to the /initialpose
         #     topic. You can test that this works properly using the
@@ -75,7 +72,7 @@ class ParticleFilter:
         self.pub_particles = rospy.Publisher("/pf/viz/particles", PoseArray, queue_size = 1)
         # Initialize the models
 
-        self.lock = Lock()
+        self.lock = RLock()
 
         # Implement the MCL algorithm
         # using the sensor model and the motion model
@@ -99,28 +96,23 @@ class ParticleFilter:
 
     def lidar_callback(self, msg):
         rospy.loginfo("lidar callback")
-        updated_prob = self.sensor_model.evaluate(self.particles, signal.decimate(np.array(msg.ranges), self.num_beams_per_particle))
-        updated_prob = updated_prob/np.sum(updated_prob)
-        
-        rowindexarray = np.arange(self.num_particles)
-        sampled_rows = np.random.choice(rowindexarray, size=self.num_particles, p=updated_prob)
-        sampled_points = self.particles[sampled_rows]
-        
-        self.lock.acquire()
-        self.particles = sampled_points
-        self.avg_and_publish()
-        self.lock.release()
+        with self.lock:
+            updated_prob = self.sensor_model.evaluate(self.particles, signal.decimate(np.array(msg.ranges), self.num_beams_per_particle))
+            updated_prob = updated_prob/np.sum(updated_prob)
+            rowindexarray = np.arange(self.num_particles)
+            sampled_rows = np.random.choice(rowindexarray, size=self.num_particles, p=updated_prob)
+            sampled_points = self.particles[sampled_rows]
+            self.particles = sampled_points
+            self.avg_and_publish()
 
     def odom_callback(self, msg):
         rospy.loginfo("odom callback")
-        odometry = np.array([msg.twist.twist.linear.x, msg.twist.twist.linear.y, msg.twist.twist.angular.z])
-        updated_particles = self.motion_model.evaluate(self.particles, odometry)
-        
-        self.lock.acquire()
-        self.particles = updated_particles
-        self.avg_and_publish()
-        self.visualise_particles()
-        self.lock.release()
+        with self.lock:
+            odometry = np.array([msg.twist.twist.linear.x, msg.twist.twist.linear.y, msg.twist.twist.angular.z])
+            updated_particles = self.motion_model.evaluate(self.particles, odometry)
+            self.particles = updated_particles
+            self.avg_and_publish()
+            self.visualise_particles()
 
     def pose_init_callback(self, msg):
         #initialize particles
