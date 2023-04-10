@@ -17,11 +17,14 @@ from  geometry_msgs.msg import TransformStamped
 import tf2_ros as tf2
 from scipy import signal
 
+from threading import RLock
+
 class ParticleFilter:
 
     def __init__(self):
         self.particles = np.array([None])
         self.old_location = np.array([None])
+        self.previous_odom_message = None
 
         # Initialize publishers/subscribers
         #
@@ -85,6 +88,8 @@ class ParticleFilter:
         self.avg_location = np.zeros((1, 3))
         self.old_avg = np.zeros([1, 3])
 
+        self.lock = RLock() 
+
     def transformation_matrix(self,th):
         return np.array([[np.cos(th), -np.sin(th), 0],
                             [np.sin(th), np.cos(th), 0],
@@ -105,7 +110,11 @@ class ParticleFilter:
     def get_argmax(self):
         argmax = np.argmax(self.probs)
         return self.particles[argmax]
-
+    
+    def update_particles(self, particles):
+        with self.lock:
+            self.particles = particles 
+        
     def lidar_callback(self, msg):
         angle_min = msg.angle_min
         angle_max = msg.angle_max
@@ -124,13 +133,14 @@ class ParticleFilter:
 
             #resample particles
             #try random.choices if this throws errors
-            self.particles = self.particles[np.random.choice(self.particles.shape[0], size=self.num_particles, p=norm_probs)]
+            self.update_particles(self.particles[np.random.choice(self.particles.shape[0], size=self.num_particles, p=norm_probs)])
             
             #self.avg_location = self.get_average(self.particles)
             
             self.avg_location = self.get_argmax()
 
             odom_msg = Odometry()
+            odom_msg.header.frame_id = self.map_topic
             odom_msg.pose.pose.position.x = self.avg_location[0]
             odom_msg.pose.pose.position.y = self.avg_location[1]
 
@@ -161,36 +171,29 @@ class ParticleFilter:
             broadcaster.sendTransform(t)
     
     def odom_callback(self, msg):
+        if(self.previous_odom_message != None):
+                dt = (msg.header.stamp - self.previous_odom_message.header.stamp).to_sec()
+                odometry = np.array([msg.twist.twist.linear.x * dt, msg.twist.twist.linear.y * dt, msg.twist.twist.angular.z * dt])
+                self.update_particles(np.array(self.motion_model.evaluate(self.particles, odometry)))
+                self.visualise_particles()
+        self.previous_odom_message = msg
 
-        if self.particles.all() != None:
-            odom = None
-            pose = msg.pose.pose
-            x = pose.position.x
-            y = pose.position.y
-                
-            q_x = pose.orientation.x
-            q_y = pose.orientation.y
-            q_z = pose.orientation.z
-            q_w = pose.orientation.w
-
-            theta = euler_from_quaternion([q_x, q_y, q_z, q_w])[2]
-            odom = self.get_odometry(np.array([x, y, theta]))
             
-            self.old_avg = self.avg_location
+        self.old_avg = self.avg_location
 
-            #make sure down sampled particles are set
-            # self.setDownSampleparticles()
+        #make sure down sampled particles are set
+        # self.setDownSampleparticles()
 
-            #update particles
-            self.particles = np.array(self.motion_model.evaluate(self.particles, odom))
-            
-            #publish averaged position
-            #NOTE: If this ever throughs an array is numpy error, there might've been concurrecy issues between probability and odom models
-            #IMPORTANT TODO: FIX the average position thing to work with angles, right now I just straight averaged, which doesn't work for sphereical coordinates, 
-            # there's a seciton in the notebook about this
+        #update particles
+       
+        
+        #publish averaged position
+        #NOTE: If this ever throughs an array is numpy error, there might've been concurrecy issues between probability and odom models
+        #IMPORTANT TODO: FIX the average position thing to work with angles, right now I just straight averaged, which doesn't work for sphereical coordinates, 
+        # there's a seciton in the notebook about this
 
-            #self.avg_location = self.get_average()
-            self.visualise_particles()
+        #self.avg_location = self.get_average()
+        self.visualise_particles()
 
     def get_odometry(self, k):
         '''
@@ -276,7 +279,7 @@ class ParticleFilter:
         q_w = msg.pose.pose.orientation.w
     
         roh, pitch, theta = euler_from_quaternion([q_x, q_y, q_z, q_w])
-        self.particles = np.repeat(np.array([[x, y, theta]]), self.num_particles, axis=0)
+        self.update_particles(np.repeat(np.array([[x, y, theta]]), self.num_particles, axis=0))
        
 
 if __name__ == "__main__":
