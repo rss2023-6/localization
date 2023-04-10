@@ -34,7 +34,8 @@ class ParticleFilter:
         #     information, and *not* use the pose component.
         scan_topic = rospy.get_param("~scan_topic", "/scan")
         odom_topic = rospy.get_param("~odom_topic", "/odom")
-
+        
+        self.map_topic = rospy.get_param("~map_topic", "/map")
         self.particle_filter_frame = rospy.get_param("~particle_filter_frame", "/base_link_pf")
         
 
@@ -247,7 +248,7 @@ class ParticleFilter:
 
          pa = PoseArray()
          pa.poses = poses 
-         pa.header.frame_id = "map"
+         pa.header.frame_id = self.map_topic
 
          self.pub_particles.publish(pa)
 
