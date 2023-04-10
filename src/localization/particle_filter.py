@@ -38,6 +38,10 @@ class ParticleFilter:
         #     information, and *not* use the pose component.
         scan_topic = rospy.get_param("~scan_topic", "/scan")
         odom_topic = rospy.get_param("~odom_topic", "/odom")
+        
+        self.motion_model = MotionModel()
+        self.sensor_model = SensorModel()
+
         self.num_particles = rospy.get_param("~num_particles", 10)
         self.num_beams_per_particle = rospy.get_param("~num_beams_per_particle", 1)
         self.particles = np.zeros((self.num_particles, 3))
@@ -48,6 +52,8 @@ class ParticleFilter:
         self.odom_sub  = rospy.Subscriber(odom_topic, Odometry,
                                           self.odom_callback, 
                                           queue_size=1)
+        
+
 
         #  *Important Note #2:* You must respond to pose
         #     initialization requests sent to the /initialpose
@@ -67,8 +73,7 @@ class ParticleFilter:
         self.odom_pub  = rospy.Publisher("/pf/pose/odom", Odometry, queue_size = 1)
         self.pub_particles = rospy.Publisher("/particles", PoseArray, queue_size = 1)
         # Initialize the models
-        self.motion_model = MotionModel()
-        self.sensor_model = SensorModel()
+
         self.lock = Lock()
 
         # Implement the MCL algorithm
