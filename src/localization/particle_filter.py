@@ -19,6 +19,7 @@ from geometry_msgs.msg import Pose
 
 from threading import Thread
 from threading import Lock
+from threading import RLock
 
 class ParticleFilter:
 
@@ -38,7 +39,7 @@ class ParticleFilter:
         #     information, and *not* use the pose component.
         scan_topic = rospy.get_param("~scan_topic", "/scan")
         odom_topic = rospy.get_param("~odom_topic", "/odom")
-        
+
         self.motion_model = MotionModel()
         self.sensor_model = SensorModel()
 
@@ -71,7 +72,7 @@ class ParticleFilter:
         #     odometry you publish here should be with respect to the
         #     "/map" frame.
         self.odom_pub  = rospy.Publisher("/pf/pose/odom", Odometry, queue_size = 1)
-        self.pub_particles = rospy.Publisher("/particles", PoseArray, queue_size = 1)
+        self.pub_particles = rospy.Publisher("/pf/viz/particles", PoseArray, queue_size = 1)
         # Initialize the models
 
         self.lock = Lock()
