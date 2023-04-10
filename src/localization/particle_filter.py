@@ -38,6 +38,7 @@ class ParticleFilter:
         #     information, and *not* use the pose component.
         scan_topic = rospy.get_param("~scan_topic", "/scan")
         odom_topic = rospy.get_param("~odom_topic", "/odom")
+        self.initialized = False
 
         self.motion_model = MotionModel()
         self.sensor_model = SensorModel()
@@ -96,6 +97,8 @@ class ParticleFilter:
 
     def lidar_callback(self, msg):
         rospy.loginfo("lidar callback")
+        if not self.initialized:
+            return
         with self.lock:
             updated_prob = self.sensor_model.evaluate(self.particles, signal.decimate(np.array(msg.ranges), self.num_beams_per_particle))
             updated_prob = updated_prob/np.sum(updated_prob)
@@ -107,6 +110,8 @@ class ParticleFilter:
 
     def odom_callback(self, msg):
         rospy.loginfo("odom callback")
+        if not self.initialized:
+            return
         with self.lock:
             odometry = np.array([msg.twist.twist.linear.x, msg.twist.twist.linear.y, msg.twist.twist.angular.z])
             updated_particles = self.motion_model.evaluate(self.particles, odometry)
@@ -116,21 +121,23 @@ class ParticleFilter:
 
     def pose_init_callback(self, msg):
         #initialize particles
-        x = msg.pose.pose.position.x
-        y = msg.pose.pose.position.y
+        with self.lock:
+            x = msg.pose.pose.position.x
+            y = msg.pose.pose.position.y
 
-        q_x = msg.pose.pose.orientation.x
-        q_y = msg.pose.pose.orientation.y
-        q_z = msg.pose.pose.orientation.z
-        q_w = msg.pose.pose.orientation.w
-    
-        roh, pitch, theta = euler_from_quaternion([q_x, q_y, q_z, q_w])
+            q_x = msg.pose.pose.orientation.x
+            q_y = msg.pose.pose.orientation.y
+            q_z = msg.pose.pose.orientation.z
+            q_w = msg.pose.pose.orientation.w
+        
+            roh, pitch, theta = euler_from_quaternion([q_x, q_y, q_z, q_w])
 
-        for i in range(self.num_particles):
-            self.particles[i,0] = x + random.gauss(0, .1)
-            self.particles[i,1] = y + random.gauss(0, .1)
-            self.particles[i,2] = theta + random.gauss(0, .1)
-        rospy.loginfo(self.particles)
+            for i in range(self.num_particles):
+                self.particles[i,0] = x + random.gauss(0, .1)
+                self.particles[i,1] = y + random.gauss(0, .1)
+                self.particles[i,2] = theta + random.gauss(0, .1)
+            rospy.loginfo(self.particles)
+        self.initialized = True
 
     def avg_and_publish(self):
         x = 0
@@ -151,7 +158,7 @@ class ParticleFilter:
         odom = Odometry()
         odom.header.stamp = rospy.Time().now()
         odom.header.frame_id = "/map"
-        odom.child_frame_id = "/base_link_pf"
+        # odom.child_frame_id = "/base_link_pf"
         odom.pose.pose.position.x = x
         odom.pose.pose.position.y = y
         odom.pose.pose.position.z = 0
