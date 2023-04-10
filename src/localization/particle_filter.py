@@ -5,7 +5,7 @@ from sensor_model import SensorModel
 from motion_model import MotionModel
 import numpy as np
 import random
-from scipy import signal
+# from scipy import signal
 
 from visualization_msgs.msg import Marker
 from sensor_msgs.msg import LaserScan
@@ -72,8 +72,8 @@ class ParticleFilter:
         self.odom_pub  = rospy.Publisher("/pf/pose/odom", Odometry, queue_size = 1)
         self.pub_particles = rospy.Publisher("/pf/viz/particles", PoseArray, queue_size = 1)
         # Initialize the models
-
         self.lock = RLock()
+        self.previous_odom_message = None
 
         # Implement the MCL algorithm
         # using the sensor model and the motion model
@@ -100,9 +100,10 @@ class ParticleFilter:
         if not self.initialized:
             return
         with self.lock:
-            updated_prob = self.sensor_model.evaluate(self.particles, signal.decimate(np.array(msg.ranges), self.num_beams_per_particle))
+            updated_prob = self.sensor_model.evaluate(self.particles, np.array(msg.ranges))
             updated_prob = updated_prob/np.sum(updated_prob)
             rowindexarray = np.arange(self.num_particles)
+
             sampled_rows = np.random.choice(rowindexarray, size=self.num_particles, p=updated_prob)
             sampled_points = self.particles[sampled_rows]
             self.particles = sampled_points
@@ -113,11 +114,14 @@ class ParticleFilter:
         if not self.initialized:
             return
         with self.lock:
-            odometry = np.array([msg.twist.twist.linear.x, msg.twist.twist.linear.y, msg.twist.twist.angular.z])
-            updated_particles = self.motion_model.evaluate(self.particles, odometry)
-            self.particles = updated_particles
-            self.avg_and_publish()
-            self.visualise_particles()
+            if(self.previous_odom_message != None):
+                dt = (msg.header.stamp - self.prev_data.header.stamp).to_sec()
+                odometry = np.array([msg.twist.twist.linear.x * dt, msg.twist.twist.linear.y * dt, msg.twist.twist.angular.z * dt])
+                updated_particles = self.motion_model.evaluate(self.particles, odometry)
+                self.particles = updated_particles
+                self.avg_and_publish()
+                self.visualise_particles()
+        self.previous_odom_message = msg
 
     def pose_init_callback(self, msg):
         #initialize particles
