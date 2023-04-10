@@ -18,7 +18,6 @@ from geometry_msgs.msg import PoseArray
 from geometry_msgs.msg import Pose
 
 from threading import Thread
-from threading import Lock
 from threading import RLock
 
 class ParticleFilter:
@@ -38,6 +37,8 @@ class ParticleFilter:
         odom_topic = rospy.get_param("~odom_topic", "/odom")
         self.map_topic = rospy.get_param("~map_topic", "/map")
         self.particle_filter_frame = rospy.get_param("~particle_filter_frame", "/base_link_pf")
+        
+        self.initialized = False
 
         self.motion_model = MotionModel()
         self.sensor_model = SensorModel()
@@ -53,8 +54,6 @@ class ParticleFilter:
                                           self.odom_callback, 
                                           queue_size=1)
         
-
-
         #  *Important Note #2:* You must respond to pose
         #     initialization requests sent to the /initialpose
         #     topic. You can test that this works properly using the
@@ -74,7 +73,7 @@ class ParticleFilter:
         self.pub_particles = rospy.Publisher("/pf/viz/particles", PoseArray, queue_size = 1)
         # Initialize the models
 
-        self.lock = Lock()
+        self.lock = RLock()
 
         # Implement the MCL algorithm
         # using the sensor model and the motion model
@@ -98,46 +97,47 @@ class ParticleFilter:
 
     def lidar_callback(self, msg):
         rospy.loginfo("lidar callback")
-        updated_prob = self.sensor_model.evaluate(self.particles, signal.decimate(np.array(msg.ranges), self.num_beams_per_particle))
-        updated_prob = updated_prob/np.sum(updated_prob)
-        
-        rowindexarray = np.arange(self.num_particles)
-        sampled_rows = np.random.choice(rowindexarray, size=self.num_particles, p=updated_prob)
-        sampled_points = self.particles[sampled_rows]
-        
-        self.lock.acquire()
-        self.particles = sampled_points
-        self.avg_and_publish()
-        self.lock.release()
+        if not self.initialized:
+            return
+        with self.lock:
+            updated_prob = self.sensor_model.evaluate(self.particles, signal.decimate(np.array(msg.ranges), self.num_beams_per_particle))
+            updated_prob = updated_prob/np.sum(updated_prob)
+            rowindexarray = np.arange(self.num_particles)
+            sampled_rows = np.random.choice(rowindexarray, size=self.num_particles, p=updated_prob)
+            sampled_points = self.particles[sampled_rows]
+            self.particles = sampled_points
+            self.avg_and_publish()
 
     def odom_callback(self, msg):
         rospy.loginfo("odom callback")
-        odometry = np.array([msg.twist.twist.linear.x, msg.twist.twist.linear.y, msg.twist.twist.angular.z])
-        updated_particles = self.motion_model.evaluate(self.particles, odometry)
-        
-        self.lock.acquire()
-        self.particles = updated_particles
-        self.avg_and_publish()
-        self.visualise_particles()
-        self.lock.release()
+        if not self.initialized:
+            return
+        with self.lock:
+            odometry = np.array([msg.twist.twist.linear.x, msg.twist.twist.linear.y, msg.twist.twist.angular.z])
+            updated_particles = self.motion_model.evaluate(self.particles, odometry)
+            self.particles = updated_particles
+            self.avg_and_publish()
+            self.visualise_particles()
 
     def pose_init_callback(self, msg):
         #initialize particles
-        x = msg.pose.pose.position.x
-        y = msg.pose.pose.position.y
+        with self.lock:
+            x = msg.pose.pose.position.x
+            y = msg.pose.pose.position.y
 
-        q_x = msg.pose.pose.orientation.x
-        q_y = msg.pose.pose.orientation.y
-        q_z = msg.pose.pose.orientation.z
-        q_w = msg.pose.pose.orientation.w
-    
-        roh, pitch, theta = euler_from_quaternion([q_x, q_y, q_z, q_w])
+            q_x = msg.pose.pose.orientation.x
+            q_y = msg.pose.pose.orientation.y
+            q_z = msg.pose.pose.orientation.z
+            q_w = msg.pose.pose.orientation.w
+        
+            roh, pitch, theta = euler_from_quaternion([q_x, q_y, q_z, q_w])
 
-        for i in range(self.num_particles):
-            self.particles[i,0] = x + random.gauss(0, .1)
-            self.particles[i,1] = y + random.gauss(0, .1)
-            self.particles[i,2] = theta + random.gauss(0, .1)
-        rospy.loginfo(self.particles)
+            for i in range(self.num_particles):
+                self.particles[i,0] = x + random.gauss(0, .1)
+                self.particles[i,1] = y + random.gauss(0, .1)
+                self.particles[i,2] = theta + random.gauss(0, .1)
+            rospy.loginfo(self.particles)
+        self.initialized = True
 
     def avg_and_publish(self):
         x = 0
