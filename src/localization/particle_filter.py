@@ -130,7 +130,7 @@ class ParticleFilter:
             q_z = msg.pose.pose.orientation.z
             q_w = msg.pose.pose.orientation.w
         
-            roh, pitch, theta = euler_from_quaternion([q_x, q_y, q_z, q_w])
+            roll, pitch, theta = euler_from_quaternion([q_x, q_y, q_z, q_w])
 
             for i in range(self.num_particles):
                 self.particles[i,0] = x + random.gauss(0, .1)
