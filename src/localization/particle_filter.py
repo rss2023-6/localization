@@ -24,7 +24,6 @@ from scipy import signal
 from threading import RLock
 
 class ParticleFilter:
-
     def __init__(self):
         self.particles = np.array([None])
         self.previous_odom_message = None
@@ -112,11 +111,13 @@ class ParticleFilter:
             self.particles = particles 
         
     def lidar_callback(self, msg):
+        rospy.loginfo("lidar_callback")
         if not self.initialized:
             return
         
         #make sure down sampled particles are set
-        ranges = signal.decimate(np.array(msg.ranges), len(msg.ranges)/self.num_beams_per_particle)
+        ranges = ranges[::self.num_beams_per_particle]
+        # ranges = signal.decimate(np.array(msg.ranges), len(msg.ranges)/self.num_beams_per_particle)
         
         #update probability
         if self.particles.all() != None:
@@ -215,6 +216,7 @@ class ParticleFilter:
         # broadcaster.sendTransform(t)
     
     def odom_callback(self, msg):
+        rospy.loginfo("odom_callback")
         if not self.initialized:
             return
         if(self.previous_odom_message != None):
