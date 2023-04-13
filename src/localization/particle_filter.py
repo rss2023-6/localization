@@ -48,6 +48,8 @@ class ParticleFilter:
         self.sensor_model = SensorModel()
 
         self.num_particles = rospy.get_param("~num_particles", 200)
+
+        self.rate = rospy.Rate(20.0)
         
         self.laser_sub = rospy.Subscriber(scan_topic, LaserScan,
                                           self.lidar_callback, 
@@ -73,8 +75,8 @@ class ParticleFilter:
         #     odometry you publish here should be with respect to the
         #     "/map" frame.
 
-        self.odom_pub  = rospy.Publisher("/pf/pose/odom", Odometry, queue_size = 1)
-        self.pub_particles = rospy.Publisher("/pf/viz/particles", PoseArray, queue_size = 1)
+        self.odom_pub  = rospy.Publisher("/pf/pose/odom", Odometry, queue_size = 50)
+        self.pub_particles = rospy.Publisher("/pf/viz/particles", PoseArray, queue_size = 50)
         # Initialize the models
         self.lock = RLock()
         self.previous_odom_message = None
@@ -163,7 +165,7 @@ class ParticleFilter:
             t.transform.rotation.w = o[3]
             broadcaster.sendTransform(t)
 
-
+            self.rate.sleep()
             # TAs used pubtransform.sendtransform with self.particlefilterframe and map. Send x and y pose and 0
             # TAs also published odometry here using topic /pf/pose/odom
 
