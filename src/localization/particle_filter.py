@@ -49,12 +49,6 @@ class ParticleFilter:
 
         self.num_particles = rospy.get_param("~num_particles", 200)
         
-        self.map_topic = rospy.get_param("~map_topic", "/map")
-        self.particle_filter_frame = rospy.get_param("~particle_filter_frame", "/base_link_pf")
-        
-
-        self.num_particles = rospy.get_param("~num_particles", 200)
-        
         self.laser_sub = rospy.Subscriber(scan_topic, LaserScan,
                                           self.lidar_callback, 
                                           queue_size=1)
@@ -134,13 +128,15 @@ class ParticleFilter:
             self.update_particles(self.particles[np.random.choice(self.particles.shape[0], size=self.num_particles, p=norm_probs)])
             
             #self.avg_location = self.get_average(self.particles)
-            self.avg_location = self.get_argmax()
-            # self.abg_location = self.avg()
+            #self.avg_location = self.get_argmax()
+            self.avg_location = self.avg()
 
             odom_msg = Odometry()
             odom_msg.header.frame_id = self.map_topic
+            odom_msg.header.stamp = rospy.Time().now()
             odom_msg.pose.pose.position.x = self.avg_location[0]
             odom_msg.pose.pose.position.y = self.avg_location[1]
+            odom_msg.child_frame_id = "pf/pose/odom"
 
             #Might have to do the q_x, q_y thing directly 
             o = quaternion_from_euler(0, 0, self.avg_location[2])
@@ -148,7 +144,7 @@ class ParticleFilter:
             odom_msg.pose.pose.orientation.y = o[1]
             odom_msg.pose.pose.orientation.z = o[2]
             odom_msg.pose.pose.orientation.w = o[3]
-
+            #publish odom msg
             self.odom_pub.publish(odom_msg)
             
             broadcaster = tf2.TransformBroadcaster()
@@ -166,6 +162,10 @@ class ParticleFilter:
             t.transform.rotation.z = o[2]
             t.transform.rotation.w = o[3]
             broadcaster.sendTransform(t)
+
+
+            # TAs used pubtransform.sendtransform with self.particlefilterframe and map. Send x and y pose and 0
+            # TAs also published odometry here using topic /pf/pose/odom
 
     def avg(self):
         x = 0
@@ -277,7 +277,7 @@ class ParticleFilter:
     
         roll, pitch, theta = euler_from_quaternion([q_x, q_y, q_z, q_w])
 
-        particles = np.repeat(np.array([[x, y, theta]]))
+        particles = np.zeros((self.num_particles, 3))
 
         for i in range(self.num_particles):
             particles[i,0] = x + random.gauss(0, .1)
