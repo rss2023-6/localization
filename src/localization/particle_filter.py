@@ -134,11 +134,12 @@ class ParticleFilter:
             self.update_particles(self.particles[np.random.choice(self.particles.shape[0], size=self.num_particles, p=norm_probs)])
             
             #self.avg_location = self.get_average(self.particles)
-            self.avg_location = self.get_argmax()
-            # self.abg_location = self.avg()
+            #self.avg_location = self.get_argmax()
+            self.avg_location = self.avg()
 
             odom_msg = Odometry()
             odom_msg.header.frame_id = self.map_topic
+            odom_msg.header.stamp = rospy.Time().now()
             odom_msg.pose.pose.position.x = self.avg_location[0]
             odom_msg.pose.pose.position.y = self.avg_location[1]
 
@@ -277,7 +278,7 @@ class ParticleFilter:
     
         roll, pitch, theta = euler_from_quaternion([q_x, q_y, q_z, q_w])
 
-        particles = np.repeat(np.array([[x, y, theta]]))
+        particles = np.zeros((self.num_particles, 3))
 
         for i in range(self.num_particles):
             particles[i,0] = x + random.gauss(0, .1)
